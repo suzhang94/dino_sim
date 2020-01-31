@@ -183,11 +183,13 @@ class Environment():
         #self.last_observation = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
         #self.observation = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
 
-        self.last_observation = [0, 0, 0, 0, 0, 0, 0]
-        self.observation = [0, 0, 0, 0, 0, 0]
+        #self.last_observation = [0, 0, 0, 0, 0, 0, 0]
+        #self.observation = [0, 0, 0, 0, 0, 0]
+        self.observation = self.rand_init_loc()
+        self.last_observation = self.observation
 
-        # self.last_observation = [0, 0]
-        # self.observation = [0, 0]
+        #self.last_observation = [0, 0]
+        #self.observation = [0, 0]
 
         self.reward = None
         self.map = copy.deepcopy(self.origin_map)
@@ -226,6 +228,20 @@ class Environment():
         for location in neighbour_loc:
             neighbour_vec.append(self.map[location[0]][location[1]])
 
+        return neighbour_vec
+
+    def rand_init_loc(self):
+        loc = [random.randint(0, self.size-1), random.randint(0, self.size-1)]
+        neighbour_vec = self.get_neighbour(loc)
+        neighbour_vec.insert(0, loc[0])
+        neighbour_vec.insert(0, loc[1])
+        for i in range(len(neighbour_vec)):
+            if neighbour_vec[i] == '*':
+                neighbour_vec[i]= 0
+            elif neighbour_vec[i] == 'R' :
+                neighbour_vec[i]= 1
+            elif neighbour_vec[i] == 'C':
+                neighbour_vec[i] = 1
         return neighbour_vec
 
     def init_map_vec(self):

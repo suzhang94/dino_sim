@@ -12,427 +12,14 @@ import torch.nn.functional as F
 import torch.optim as optim
 
 
-BUFFER_SIZE = int(1)  #replay buffer size
-BATCH_SIZE = 1       # minibatch size
-GAMMA = 0.8            # discount factor
+BUFFER_SIZE = int(1e4)  #replay buffer size
+BATCH_SIZE = 16      # minibatch size
+GAMMA = 0.9            # discount factor
 TAU = 1e-3              # for soft update of target parameters
 LR = 5e-4               # learning rate
-UPDATE_EVERY = 1        # how often to update the network
+UPDATE_EVERY = 4        # how often to update the network
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-class Random_Agent():
-    def __init__(self,action_size):
-        """Initialize an Agent object.
-
-        Params
-        =======
-            state_size (int): dimension of each state
-            action_size (int): dimension of each action
-            seed (int): random seed
-        """
-        # Initialize time step (for updating every UPDATE_EVERY steps)
-        self.t_step = 0
-        self.action_size = action_size
-
-    def step(self,state, action, reward, next_state, done):
-        self.t_step +=1
-
-    def act(self, state, done):
-        return random.choice(np.arange(self.action_size))
-
-class Sweep_Agent():
-    def __init__(self,action_size):
-        """Initialize an Agent object.
-
-        Params
-        =======
-            state_size (int): dimension of each state
-            action_size (int): dimension of each action
-            seed (int): random seed
-        """
-        # Initialize time step (for updating every UPDATE_EVERY steps)
-        self.t_step = 0
-        self.action_size = action_size
-        self.seq = []
-
-        for j in range(4):
-            for i in range(7):
-                self.seq.append(1)
-            self.seq.append(2)
-            for i in range(7):
-                self.seq.append(3)
-            self.seq.append(2)
-        self.seq.pop(-1)
-
-    def step(self,state, action, reward, next_state, done):
-        self.t_step +=1
-
-    def act(self, state, done):
-        if self.seq:
-            return self.seq.pop(0)
-        else:
-            for j in range(4):
-                for i in range(7):
-                    self.seq.append(1)
-                self.seq.append(2)
-                for i in range(7):
-                    self.seq.append(3)
-                self.seq.append(2)
-            self.seq.pop(-1)
-
-class Q_Agent():
-    def __init__(self,state_size, action_size, dinotype_num, seed):
-        """Initialize an Agent object.
-
-        Params
-        =======
-            state_size (int): dimension of each state
-            action_size (int): dimension of each action
-            seed (int): random seed
-        """
-        # Initialize time step (for updating every UPDATE_EVERY steps)
-        self.t_step = 0
-        self.action_size = action_size
-        #self.Q_table = np.full((8,8,2,2,2,2,4),0.001) #state_size = 8
-        self.Q_table = np.full((8, 8, 4), 0.001)
-        self.last_action = None
-        self.last_observation = None
-        self.statespace = []
-        self.accumulated_reward = 0
-        self.epsilon = 0.05
-        self.gamma = 0.8
-        self.alpha = 0.9
-        #self.decay = 0.99
-
-        self.probMap = np.full((8, 8), 0.0)  # state_size = 8
-        #self.visitMap = np.full((8, 8), 0)
-
-    def step(self,state, action, reward, next_state, done, test, map_update):
-        self.t_step += 1
-        last_state = copy.deepcopy(state)
-        curr_state = next_state
-        self.accumulated_reward += reward
-
-        # update Q value
-        pre_Q = copy.deepcopy(self.get_Q_value(last_state, self.last_action))
-
-        # Q learning
-        max_Q = []
-        for i in range(self.action_size):
-            max_Q.append(self.get_Q_value(curr_state, i))
-
-        #self.alpha = max(self.alpha * self.decay, 0.2)
-        new_Q = pre_Q + self.alpha * (reward + self.gamma * max(max_Q) - pre_Q)
-
-        if not test:
-            self.Q_table[last_state[0]][last_state[1]][self.last_action] = new_Q
-            #self.Q_table[last_state[0]][last_state[1]][last_state[2]][last_state[3]][last_state[4]][last_state[5]][self.last_action] = new_Q
-        #     if not self.visitMap[curr_state[0]][curr_state[1]] and reward != -1:
-        #         self.visitMap[curr_state[0]][curr_state[1]]  = 1
-        #         self.probMap[curr_state[0]][curr_state[1]]  = self.probMap[curr_state[0]][curr_state[1]] + 1
-
-
-    def get_Q_value(self, state, action):
-        # print "battery level",battery
-        q_val = self.Q_table[state[0]][state[1]][action]
-        #q_val = np.take(self.Q_table, state)
-        #q_val = self.Q_table[state[0]][state[1]][state[2]][state[3]][state[4]][state[5]][action]
-        return q_val
-
-
-    def act(self, state):
-        curr_state = state
-        new_action = None
-
-        if random.random() > self.epsilon:
-            max_Q = []
-            for i in range(self.action_size):
-                max_Q.append(self.get_Q_value(curr_state, i))
-
-            temp = np.argmax(max_Q)
-        else:
-            temp = random.randrange(self.action_size)
-
-        new_action = temp
-        self.last_action = new_action
-        self.last_observation = copy.deepcopy(state)
-        return new_action
-
-    def reset(self):
-        self.t_step = 0
-        self.Q_table = np.full((8,8,4),0.001) #state_size = 8
-        #self.Q_table = np.full((8, 8, 2, 2, 2, 2, 4), 0.001)  # state_size = 8
-        self.last_action = None
-        self.last_observation = None
-        self.statespace = []
-        self.accumulated_reward = 0
-        self.alpha = 0.9
-
-class Q_Agent_Neighbour():
-    def __init__(self,state_size, action_size, dinotype_num, seed):
-        """Initialize an Agent object.
-
-        Params
-        =======
-            state_size (int): dimension of each state
-            action_size (int): dimension of each action
-            seed (int): random seed
-        """
-        # Initialize time step (for updating every UPDATE_EVERY steps)
-        self.t_step = 0
-        self.action_size = action_size
-        self.Q_table = np.full((8,8,2,2,2,2,4),0.001) #state_size = 8
-        self.last_action = None
-        self.last_observation = None
-        self.statespace = []
-        self.accumulated_reward = 0
-        self.epsilon = 0.05
-        self.gamma = 0.8
-        self.alpha = 0.9
-        self.decay = 0.99
-
-        self.probMap = np.full((8, 8), 0.0)  # state_size = 8
-        #self.visitMap = np.full((8, 8), 0)
-
-    def step(self,state, action, reward, next_state, done, test, map_update):
-        self.t_step += 1
-        last_state = copy.deepcopy(state)
-        curr_state = next_state
-        self.accumulated_reward += reward
-
-        # update Q value
-        pre_Q = copy.deepcopy(self.get_Q_value(last_state, action))
-
-        # Q learning
-        max_Q = []
-        for i in range(self.action_size):
-            max_Q.append(self.get_Q_value(curr_state, i))
-
-        self.alpha = max(self.alpha * self.decay, 5e-4)
-        new_Q = pre_Q + self.alpha * (reward + self.gamma * max(max_Q) - pre_Q)
-
-        if not test:
-            #self.Q_table[last_state[0]][last_state[1]][self.last_action] = new_Q
-            self.Q_table[last_state[0]][last_state[1]][last_state[2]][last_state[3]][last_state[4]][last_state[5]][self.last_action] = new_Q
-        #     if not self.visitMap[curr_state[0]][curr_state[1]] and reward != -1:
-        #         self.visitMap[curr_state[0]][curr_state[1]]  = 1
-        #         self.probMap[curr_state[0]][curr_state[1]]  = self.probMap[curr_state[0]][curr_state[1]] + 1
-
-
-    def get_Q_value(self, state, action):
-        # print "battery level",battery
-        #q_val = self.Q_table[state[0]][state[1]][action]
-        #q_val = np.take(self.Q_table, state)
-        q_val = self.Q_table[state[0]][state[1]][state[2]][state[3]][state[4]][state[5]][action]
-        return q_val
-
-
-    def act(self, state):
-        curr_state = state
-        new_action = None
-
-        if random.random() > self.epsilon:
-            max_Q = []
-            for i in range(self.action_size):
-                max_Q.append(self.get_Q_value(curr_state, i))
-
-            temp = np.argmax(max_Q)
-        else:
-            temp = random.randrange(self.action_size)
-
-        new_action = temp
-        self.last_action = new_action
-        self.last_observation = copy.deepcopy(state)
-        return new_action
-
-    def reset(self):
-        self.t_step = 0
-        #self.Q_table = np.full((8,8,4),0.001) #state_size = 8
-        self.Q_table = np.full((8, 8, 2, 2, 2, 2, 4), 0.001)  # state_size = 8
-        self.last_action = None
-        self.last_observation = None
-        self.statespace = []
-        self.accumulated_reward = 0
-        self.alpha = 0.9
-
-class Q_Agent_Vector():
-    def __init__(self,state_size, action_size, dinotype_num, seed):
-        """Initialize an Agent object.
-
-        Params
-        =======
-            state_size (int): dimension of each state
-            action_size (int): dimension of each action
-            seed (int): random seed
-        """
-        # Initialize time step (for updating every UPDATE_EVERY steps)
-        self.t_step = 0
-        self.action_size = action_size
-        self.Q_table = np.full((8,8,2,2,2,2,2,2,2,2,2,2,2,2,2,4),0.001) #state_size = 8
-        self.last_action = None
-        self.last_observation = None
-        self.statespace = []
-        self.accumulated_reward = 0
-        self.epsilon = 0.05
-        self.gamma = 0.8
-        self.alpha = 0.9
-        self.decay = 0.99
-
-        self.probMap = np.full((8, 8), 0.0)  # state_size = 8
-        #self.visitMap = np.full((8, 8), 0)
-
-    def step(self,state, action, reward, next_state, done, test, map_update):
-        self.t_step += 1
-        last_state = copy.deepcopy(state)
-        curr_state = next_state
-        self.accumulated_reward += reward
-
-        # update Q value
-        pre_Q = copy.deepcopy(self.get_Q_value(last_state, action))
-
-        # Q learning
-        max_Q = []
-        for i in range(self.action_size):
-            max_Q.append(self.get_Q_value(curr_state, i))
-
-        self.alpha = max(self.alpha * self.decay, 5e-4)
-        new_Q = pre_Q + self.alpha * (reward + self.gamma * max(max_Q) - pre_Q)
-
-        if not test:
-            #self.Q_table[last_state[0]][last_state[1]][self.last_action] = new_Q
-            self.Q_table[last_state[0]][last_state[1]][last_state[2]][last_state[3]][last_state[4]][last_state[5]][last_state[6]][last_state[7]][last_state[8]][last_state[9]][last_state[10]][last_state[11]][last_state[12]][last_state[13]][last_state[14]][self.last_action] = new_Q
-        #     if not self.visitMap[curr_state[0]][curr_state[1]] and reward != -1:
-        #         self.visitMap[curr_state[0]][curr_state[1]]  = 1
-        #         self.probMap[curr_state[0]][curr_state[1]]  = self.probMap[curr_state[0]][curr_state[1]] + 1
-
-
-    def get_Q_value(self, state, action):
-        # print "battery level",battery
-        #q_val = self.Q_table[state[0]][state[1]][action]
-        #q_val = np.take(self.Q_table, state)
-        q_val = self.Q_table[state[0]][state[1]][state[2]][state[3]][state[4]][state[5]][state[6]][state[7]][state[8]][state[9]][state[10]][state[11]][state[12]][state[13]][state[14]][action]
-        return q_val
-
-
-    def act(self, state):
-        curr_state = state
-        new_action = None
-
-        if random.random() > self.epsilon:
-            max_Q = []
-            for i in range(self.action_size):
-                max_Q.append(self.get_Q_value(curr_state, i))
-
-            temp = np.argmax(max_Q)
-        else:
-            temp = random.randrange(self.action_size)
-
-        new_action = temp
-        self.last_action = new_action
-        self.last_observation = copy.deepcopy(state)
-        return new_action
-
-    def reset(self):
-        self.t_step = 0
-        #self.Q_table = np.full((8,8,4),0.001) #state_size = 8
-        self.Q_table = np.full((8, 8, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 4), 0.001)
-        self.last_action = None
-        self.last_observation = None
-        self.statespace = []
-        self.accumulated_reward = 0
-        self.alpha = 0.9
-
-class Q_Agent_single_prob():
-    def __init__(self,state_size, action_size, dinotype_num, seed):
-        """Initialize an Agent object.
-
-        Params
-        =======
-            state_size (int): dimension of each state
-            action_size (int): dimension of each action
-            seed (int): random seed
-        """
-        # Initialize time step (for updating every UPDATE_EVERY steps)
-        self.t_step = 0
-        self.action_size = action_size
-        #self.Q_table = np.full((8,8,2,2,2,2,4),0.001) #state_size = 8
-        self.Q_table = np.full((8, 8, 2, 4), 0.001)
-        self.last_action = None
-        self.last_observation = None
-        self.statespace = []
-        self.accumulated_reward = 0
-        self.epsilon = 0.05
-        self.gamma = 0.8
-        self.alpha = 0.9
-        #self.decay = 0.99
-
-        self.probMap = np.full((8, 8), 0)  # state_size = 8
-        self.visitMap = np.full((8, 8), 0)
-
-    def step(self,state, action, reward, next_state, done, test, map_update):
-        self.t_step += 1
-        last_state = copy.deepcopy(state)
-        curr_state = next_state
-        self.accumulated_reward += reward
-
-        # update Q value
-        pre_Q = copy.deepcopy(self.get_Q_value(last_state, self.last_action))
-
-        # Q learning
-        max_Q = []
-        for i in range(self.action_size):
-            max_Q.append(self.get_Q_value(curr_state, i))
-
-        #self.alpha = max(self.alpha * self.decay, 0.2)
-        new_Q = pre_Q + self.alpha * (reward + self.gamma * max(max_Q) - pre_Q)
-
-        prob_bool = self.probMap[last_state[0]][last_state[1]]
-
-        if not test:
-            self.Q_table[last_state[0]][last_state[1]][prob_bool][self.last_action] = new_Q
-            #self.Q_table[last_state[0]][last_state[1]][last_state[2]][last_state[3]][last_state[4]][last_state[5]][self.last_action] = new_Q
-            if not self.visitMap[curr_state[0]][curr_state[1]] and reward != -1 and not map_update:
-                self.visitMap[curr_state[0]][curr_state[1]]  = 1
-                self.probMap[curr_state[0]][curr_state[1]]  = 1
-
-
-    def get_Q_value(self, state, action):
-        # print "battery level",battery
-        prob_bool = self.probMap[state[0]][state[1]]
-        q_val = self.Q_table[state[0]][state[1]][prob_bool][action]
-        #q_val = np.take(self.Q_table, state)
-        #q_val = self.Q_table[state[0]][state[1]][state[2]][state[3]][state[4]][state[5]][action]
-        return q_val
-
-
-    def act(self, state):
-        curr_state = state
-        new_action = None
-
-        if random.random() > self.epsilon:
-            max_Q = []
-            for i in range(self.action_size):
-                max_Q.append(self.get_Q_value(curr_state, i))
-
-            temp = np.argmax(max_Q)
-        else:
-            temp = random.randrange(self.action_size)
-
-        new_action = temp
-        self.last_action = new_action
-        self.last_observation = copy.deepcopy(state)
-        return new_action
-
-    def reset(self):
-        self.t_step = 0
-        self.Q_table = np.full((8,8,2,4),0.001) #state_size = 8
-        #self.Q_table = np.full((8, 8, 2, 2, 2, 2, 4), 0.001)  # state_size = 8
-        self.last_action = None
-        self.last_observation = None
-        self.statespace = []
-        self.accumulated_reward = 0
-        self.alpha = 0.9
 
 class Fully_Agent_Neighbour():
     def __init__(self, state_size, action_size, dinotype_num,seed):
@@ -452,9 +39,6 @@ class Fully_Agent_Neighbour():
         self.seed = random.seed(seed)
 
         # Q- Network
-        #self.policy_net = Simple_Network(state_size, action_size, dinotype_num,seed).to(device)
-        #self.target_net = Simple_Network(state_size, action_size, dinotype_num,seed).to(device)
-
         self.policy_net = Fully_Model(state_size, action_size, dinotype_num, seed).to(device)
         self.target_net = Fully_Model(state_size, action_size, dinotype_num, seed).to(device)
 
@@ -467,9 +51,36 @@ class Fully_Agent_Neighbour():
 
     def step(self, state, action, reward, next_step, done,test, map_update):
         # Save experience in replay memory
+
+        #loc = np.asarray(state)
+        # state = torch.cat((loc_tensor, self.probMap[loc[0]][loc[1]]), 1)
+        #prob_vec = np.reshape(self.probMap, 64)
+
+        #state_vector = np.concatenate((loc, prob_vec), axis=None)
+        #state_tensor = torch.from_numpy(state_vector).float().unsqueeze(0).to(device)
+
+        #next_state_vector = np.concatenate((np.asarray(next_step), prob_vec), axis=None)
+        #next_state_tensor = torch.from_numpy(next_state_vector).float().unsqueeze(0).to(device)
+
+
         self.memory.add(state, action, reward, next_step, done)
-        experience = self.memory.sample()
-        self.learn(experience, GAMMA)
+        self.t_step = (self.t_step + 1) % UPDATE_EVERY
+        if self.t_step == 0:
+            # If enough samples are available in memory, get radom subset and learn
+
+            if len(self.memory) > BATCH_SIZE:
+                experience = self.memory.sample()
+                self.learn(experience, GAMMA)
+
+        # if not test:
+        #     if self.visitMap[state[0]][state[1]] == 0:
+        #         self.visitMap[state[0]][state[1]] = 1
+        #         if reward != -1:
+        #             self.probMap[state[0]][state[1]] = 1
+        #         else:
+        #             self.probMap[state[0]][state[1]] = 0
+        #     else:
+        #         self.probMap[state[0]][state[1]] = 0
 
 
     def act(self, state, eps):
@@ -590,3 +201,18 @@ class ReplayBuffer:
     def __len__(self):
         """Return the current size of internal memory."""
         return len(self.memory)
+
+def para_setting(paras):
+    global BUFFER_SIZE, BATCH_SIZE, GAMMA, TAU, LR, UPDATE_EVERY
+    BUFFER_SIZE = paras[0]
+    BATCH_SIZE = paras[1]
+    GAMMA = paras[2]
+    TAU = paras[3]
+    LR = paras[4]
+    UPDATE_EVERY = paras[5]
+    pass
+
+def para_print():
+    global BUFFER_SIZE, BATCH_SIZE, GAMMA, TAU, LR, UPDATE_EVERY
+    print(BUFFER_SIZE, BATCH_SIZE, GAMMA, TAU, LR, UPDATE_EVERY)
+    pass

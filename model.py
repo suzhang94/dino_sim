@@ -97,16 +97,10 @@ class Fully_Model(nn.Module):
         """
         super(Fully_Model,self).__init__() # calls __init__ method of nn.Module class
         self.seed = torch.manual_seed(seed)
-        #shared fully connected layer
-        self.fc = nn.Linear(6,4)
-        # policy
-        #self.conv1 = nn.Conv2d(2, conv1_unit, kernel_size=4, stride=2)
-        #self.head_policy = nn.Linear(fc_unit, action_size)
+
+        self.fc = nn.Linear(6,16)
+        self.out = nn.Linear(16,4)
 
     def forward(self, x):
-        # x = state
-        """
-        Build a network that maps state -> action values.
-        """
-        #x = F.relu(self.fc(x))
-        return self.fc(x)
+        x = F.relu(self.fc(x))
+        return self.out(x)
