@@ -39,8 +39,12 @@ class Fully_Agent_Neighbour():
         self.seed = random.seed(seed)
 
         # Q- Network
-        self.policy_net = Fully_Model(state_size, action_size, dinotype_num, seed).to(device)
-        self.target_net = Fully_Model(state_size, action_size, dinotype_num, seed).to(device)
+        self.policy_net = Fully_Model(state_size, action_size, dinotype_num,
+                                      seed, fc_unit=16).to(device)
+        self.target_net = Fully_Model(state_size, action_size, dinotype_num,
+                                      seed, fc_unit=16).to(device)
+        self.target_net.load_state_dict(self.policy_net.state_dict())
+        self.target_net.eval()
 
         self.optimizer = optim.Adam(self.policy_net.parameters(), lr=LR)
 
@@ -49,66 +53,41 @@ class Fully_Agent_Neighbour():
         # Initialize time step (for updating every UPDATE_EVERY steps)
         self.t_step = 0
 
-    def step(self, state, action, reward, next_step, done,test, map_update):
-        # Save experience in replay memory
-
-        #loc = np.asarray(state)
-        # state = torch.cat((loc_tensor, self.probMap[loc[0]][loc[1]]), 1)
-        #prob_vec = np.reshape(self.probMap, 64)
-
-        #state_vector = np.concatenate((loc, prob_vec), axis=None)
-        #state_tensor = torch.from_numpy(state_vector).float().unsqueeze(0).to(device)
-
-        #next_state_vector = np.concatenate((np.asarray(next_step), prob_vec), axis=None)
-        #next_state_tensor = torch.from_numpy(next_state_vector).float().unsqueeze(0).to(device)
-
-
-        self.memory.add(state, action, reward, next_step, done)
-        self.t_step = (self.t_step + 1) % UPDATE_EVERY
-        if self.t_step == 0:
-            # If enough samples are available in memory, get radom subset and learn
-
-            if len(self.memory) > BATCH_SIZE:
-                experience = self.memory.sample()
-                self.learn(experience, GAMMA)
-
-        # if not test:
-        #     if self.visitMap[state[0]][state[1]] == 0:
-        #         self.visitMap[state[0]][state[1]] = 1
-        #         if reward != -1:
-        #             self.probMap[state[0]][state[1]] = 1
-        #         else:
-        #             self.probMap[state[0]][state[1]] = 0
-        #     else:
-        #         self.probMap[state[0]][state[1]] = 0
-
-
-    def act(self, state, eps):
+    def choose_act(self, state, eps, t):
         """Returns action for given state as per current policy
         Params
         =======
             state (array_like): current state
             eps (float): epsilon, for epsilon-greedy action selection
         """
-        loc = np.asarray(state)
-        #state = torch.cat((loc_tensor, self.probMap[loc[0]][loc[1]]), 1)
-
-        #prob_vec = np.reshape(self.probMap, 64)
-
-        #state_vector =  np.concatenate((loc, prob_vec), axis=None)
-        state_tensor = torch.from_numpy(loc).float().unsqueeze(0).to(device)
+        state_tensor = torch.from_numpy(np.asarray(state)).float().unsqueeze(0).to(device)
 
         self.policy_net.eval()
         with torch.no_grad():
             action_values = self.policy_net.forward(state_tensor)
+            # if t % 50 == 0:
+            #     print("action values {} at step {}: ".format(action_values, t))
         self.policy_net.train()
 
         #Epsilon -greedy action selction
-        if random.random() > eps:
+        rand = random.random()
+        if rand > eps:
             a = np.argmax(action_values.cpu().data.numpy())
         else:
             a = random.choice(np.arange(self.action_size))
         return a
+
+    def step(self, state, action, reward, next_step, done,test, map_update):
+        # Save experience in replay memory
+        self.memory.add(state, action, reward, next_step, done)
+        self.t_step = (self.t_step + 1) % UPDATE_EVERY
+        if len(self.memory.buffer) > BATCH_SIZE:
+            experience = self.memory.sample()
+            self.learn(experience, GAMMA)
+        if self.t_step == 0:
+            # update target network
+            # self.soft_update(self.policy_net, self.target_net, TAU)
+            self.target_net.load_state_dict(self.policy_net.state_dict())
 
     def learn(self, experiences, gamma):
         """Update value parameters using given batch of experience tuples.
@@ -120,6 +99,7 @@ class Fully_Agent_Neighbour():
         states, actions, rewards, next_states, dones = experiences
         ## TODO: compute and minimize the loss
         criterion = torch.nn.MSELoss()
+
         self.policy_net.train()
         self.target_net.eval()
         # shape of output from the model (batch_size,action_dim) = (64,4)
@@ -127,17 +107,19 @@ class Fully_Agent_Neighbour():
 
         with torch.no_grad():
             labels_next = self.target_net(next_states).detach().max(1)[0].unsqueeze(1)
-
         # .detach() ->  Returns a new Tensor, detached from the current graph.
         labels = rewards + (gamma * labels_next * (1 - dones))
-
         loss = criterion(predicted_targets, labels).to(device)
+        # print(loss)
         self.optimizer.zero_grad()
         loss.backward()
+        # for param in self.policy_net.parameters():
+        #     if param.grad is not None:
+        #         print("grad:",param.grad)
+        # # gradient clipping
+        # for param in self.policy_net.parameters():
+        #     param.grad.data.clamp_(-1, 1)
         self.optimizer.step()
-
-        # ------------------- update target network ------------------- #
-        self.soft_update(self.policy_net, self.target_net, TAU)
 
 
     def soft_update(self, local_model, target_model, tau):
@@ -152,8 +134,6 @@ class Fully_Agent_Neighbour():
         for target_param, local_param in zip(target_model.parameters(),
                                              local_model.parameters()):
             target_param.data.copy_(tau * local_param.data + (1 - tau) * target_param.data)
-
-    pass
 
 class ReplayBuffer:
     """Fixed -size buffe to store experience tuples."""
@@ -170,7 +150,7 @@ class ReplayBuffer:
         """
 
         self.action_size = action_size
-        self.memory = deque(maxlen=buffer_size)
+        self.buffer = deque(maxlen=buffer_size)
         self.batch_size = batch_size
         self.experiences = namedtuple("Experience", field_names=["state",
                                                                  "action",
@@ -182,11 +162,11 @@ class ReplayBuffer:
     def add(self, state, action, reward, next_state, done):
         """Add a new experience to memory."""
         e = self.experiences(state, action, reward, next_state, done)
-        self.memory.append(e)
+        self.buffer.append(e)
 
     def sample(self):
         """Randomly sample a batch of experiences from memory"""
-        experiences = random.sample(self.memory, k=self.batch_size)
+        experiences = random.sample(self.buffer, k=self.batch_size)
 
         states = torch.from_numpy(np.vstack([e.state for e in experiences if e is not None])).float().to(device)
         actions = torch.from_numpy(np.vstack([e.action for e in experiences if e is not None])).long().to(device)
@@ -204,15 +184,13 @@ class ReplayBuffer:
 
 def para_setting(paras):
     global BUFFER_SIZE, BATCH_SIZE, GAMMA, TAU, LR, UPDATE_EVERY
-    BUFFER_SIZE = paras[0]
-    BATCH_SIZE = paras[1]
-    GAMMA = paras[2]
-    TAU = paras[3]
-    LR = paras[4]
-    UPDATE_EVERY = paras[5]
-    pass
+    BUFFER_SIZE = paras['buffer_size']
+    BATCH_SIZE = paras['batch_size']
+    GAMMA = paras['gamma']
+    TAU = paras['tau']
+    LR = paras['lr']
+    UPDATE_EVERY = paras['update_targetnet']
 
 def para_print():
     global BUFFER_SIZE, BATCH_SIZE, GAMMA, TAU, LR, UPDATE_EVERY
     print(BUFFER_SIZE, BATCH_SIZE, GAMMA, TAU, LR, UPDATE_EVERY)
-    pass

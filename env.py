@@ -3,7 +3,7 @@ import random
 import copy
 from collections import namedtuple, deque
 
-from model import Network
+# from model import Network
 
 import torch
 import torch.nn.functional as F
@@ -91,6 +91,7 @@ class Environment():
         self.map = copy.deepcopy(self.origin_map)
         self.episode_end = False
         self.map_vec = None
+        self.render_state = None
 
     def step(self, action):
         """
@@ -130,7 +131,6 @@ class Environment():
             self.reward = -1
 
         self.last_observation = self.observation
-
         if (self.map == '*').all():
             self.episode_end = True
 
@@ -167,6 +167,7 @@ class Environment():
                 neighbour_vec[i] = 1
 
         #print(neighbour_vec)
+        self.render_state = neighbour_vec
 
         return neighbour_vec, self.reward, self.episode_end
 
@@ -187,6 +188,7 @@ class Environment():
         #self.observation = [0, 0, 0, 0, 0, 0]
         self.observation = self.rand_init_loc()
         self.last_observation = self.observation
+        self.render_state = self.observation
 
         #self.last_observation = [0, 0]
         #self.observation = [0, 0]
@@ -217,11 +219,12 @@ class Environment():
         This methods provides the option to render the environment's behavior to a window
         which should be readable to the human eye if mode is set to 'human'.
         """
-        pass
+        print(self.map)
+        print(self.render_state)
 
     def get_neighbour(self, loc):
         neighbour_vec = []
-        neighbour_loc = [util.bound_check([loc[0], loc[1] - 1],8),
+        neighbour_loc = [util.bound_check([loc[0], loc[1] - 1], 8),
                          util.bound_check([loc[0], loc[1] + 1], 8),
                          util.bound_check([loc[0] - 1, loc[1]], 8),
                          util.bound_check([loc[0] + 1, loc[1]], 8)]
@@ -251,4 +254,3 @@ class Environment():
                 if self.map[i][j] != '*':
                     map_vec.append(util.loc_to_num([i,j], self.size))
         return map_vec
-    pass
